@@ -17,7 +17,7 @@ SUPPORT_USERNAME = "@Maxamy1" # Support channel
 
 # Compulsory channels
 REQUIRED_CHANNEL = "@testnetprof"  # Change to your channel
-REQUIRED_GROUP = "@promoterprof"      # Change to your group
+REQUIRED_GROUP = "@promoterprof"   # Change to your group
 
 # Payment rates (100 Stars = $1)
 STARS_PER_DOLLAR = 100
@@ -120,11 +120,10 @@ async def verify_membership_callback(update: Update, context: ContextTypes.DEFAU
         await query.answer("You haven't joined both channel and group yet!", show_alert=True)
 
 # ===== COMMAND HANDLERS WITH VERIFICATION =====
-async def verified_command(handler):
+def verified_command(handler):
     async def wrapped(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = update.effective_user.id
         
-        # Check if user is verified in database
         conn = sqlite3.connect('bot.db')
         cursor = conn.cursor()
         cursor.execute('SELECT verified_member FROM users WHERE user_id = ?', (user_id,))
@@ -176,8 +175,7 @@ async def handle_payment_choice(update: Update, context: ContextTypes.DEFAULT_TY
     elif query.data == 'pay_monthly':
         await show_payment_methods(query, MONTHLY_PRICE_STARS, "Monthly Subscription")
 
-@verified_command
-async def show_payment_methods(query, stars_amount, plan_name):
+async def show_payment_methods(query, stars_amount: int, plan_name: str):
     keyboard = [
         [InlineKeyboardButton("USDT (TRC20)", callback_data=f'crypto_usdt_trx_{stars_amount}')],
         [InlineKeyboardButton("TON", callback_data=f'crypto_ton_{stars_amount}')],
@@ -187,7 +185,8 @@ async def show_payment_methods(query, stars_amount, plan_name):
     await query.edit_message_text(
         f"💎 *{plan_name} - {stars_amount} Stars*\n\n"
         "Choose payment method:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode='Markdown'
     )
 
 # ===== ADMIN TOOLS =====
@@ -205,17 +204,16 @@ async def verify_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn = sqlite3.connect('bot.db')
         cursor = conn.cursor()
         
-        # Convert to USD
         amount_usd = amount / STARS_PER_DOLLAR if currency == "stars" else amount
         
-        if amount_usd >= (MONTHLY_PRICE_STARS / STARS_PER_DOLLAR):  # Monthly
+        if amount_usd >= (MONTHLY_PRICE_STARS / STARS_PER_DOLLAR):
             expiry = (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d')
             cursor.execute('''
                 INSERT OR REPLACE INTO users 
                 (user_id, premium_expiry) VALUES (?, ?)
             ''', (user_id, expiry))
             msg = f"✅ Added 30-day premium for {user_id}"
-        else:  # Single ads
+        else:
             ads_added = int(amount_usd * (STARS_PER_DOLLAR / AD_PRICE_STARS))
             cursor.execute('''
                 INSERT OR IGNORE INTO users (user_id) VALUES (?)
@@ -226,7 +224,6 @@ async def verify_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ''', (ads_added, user_id))
             msg = f"✅ Added {ads_added} ads for {user_id}"
         
-        # Record payment
         cursor.execute('''
             INSERT INTO payments 
             (user_id, amount, currency, tx_hash)
@@ -260,7 +257,7 @@ def main():
     app.add_handler(CallbackQueryHandler(handle_payment_choice, pattern='^pay_(single|monthly)$'))
     app.add_handler(CallbackQueryHandler(verify_membership_callback, pattern='^verify_membership$'))
     app.add_handler(CallbackQueryHandler(
-        lambda u,c: show_payment_methods(u.callback_query, int(u.callback_query.data.split('_')[-1]),
+        lambda u,c: show_payment_methods(u.callback_query, int(u.callback_query.data.split('_')[-1])),
         pattern='^(crypto|stars)_'
     ))
     
